@@ -1,0 +1,30 @@
+.DS_Store
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Hugging Face / datasets / caches
+data/hf_datasets/
+data/rag_cache/
+data/hf_home/
+
+# Training outputs
+out_lora/
+out_lora/*
+
+# Local env files
+.env
+.env.*
