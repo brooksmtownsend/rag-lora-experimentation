@@ -90,6 +90,8 @@ class SimpleRAG:
         scores, idxs = self.index.search(q, k)
         results = []
         for score, idx in zip(scores[0], idxs[0]):
+            if idx < 0:
+                continue
             results.append((self.docs[int(idx)], float(score)))
         return results
 

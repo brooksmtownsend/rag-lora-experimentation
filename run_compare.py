@@ -11,6 +11,8 @@ MODEL_ID = os.environ.get("MODEL_ID", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 SYSTEM_PROMPT = "You are a helpful assistant."
 DMN_MAX_NEW_TOKENS = int(os.environ.get("DMN_MAX_NEW_TOKENS", "400"))
 DMN_MAX_RETRIES = int(os.environ.get("DMN_MAX_RETRIES", "1"))
+POLICY_MAX_NEW_TOKENS = int(os.environ.get("POLICY_MAX_NEW_TOKENS", "180"))
+DEMO_MODE = os.environ.get("DEMO_MODE", "full").lower()
 DMN_SCHEMA_HINT = (
     "Use schema: decisionModel {id, name, inputs[{id,type}], output{id,type}, rules[{id,if,then}]}. "
     "Output JSON only."
@@ -105,9 +107,17 @@ def validate_dmn(obj: Any) -> List[str]:
     errors: List[str] = []
     if not isinstance(obj, dict):
         return ["top_level_not_object"]
+    extra_top = set(obj.keys()) - {"decisionModel"}
+    if extra_top:
+        errors.append(f"top_level_extra_keys:{sorted(extra_top)}")
     dm = obj.get("decisionModel")
     if not isinstance(dm, dict):
         return ["missing_decisionModel_object"]
+
+    allowed_dm_keys = {"id", "name", "inputs", "output", "rules"}
+    extra_dm = set(dm.keys()) - allowed_dm_keys
+    if extra_dm:
+        errors.append(f"decisionModel_extra_keys:{sorted(extra_dm)}")
 
     for key in ["id", "name", "inputs", "output", "rules"]:
         if key not in dm:
@@ -121,6 +131,9 @@ def validate_dmn(obj: Any) -> List[str]:
             if not isinstance(item, dict):
                 errors.append(f"inputs_{i}_not_object")
                 continue
+            extra_input = set(item.keys()) - {"id", "type"}
+            if extra_input:
+                errors.append(f"inputs_{i}_extra_keys:{sorted(extra_input)}")
             if "id" not in item or "type" not in item:
                 errors.append(f"inputs_{i}_missing_id_or_type")
 
@@ -128,6 +141,9 @@ def validate_dmn(obj: Any) -> List[str]:
     if not isinstance(output, dict):
         errors.append("output_missing_or_not_object")
     else:
+        extra_output = set(output.keys()) - {"id", "type"}
+        if extra_output:
+            errors.append(f"output_extra_keys:{sorted(extra_output)}")
         if "id" not in output or "type" not in output:
             errors.append("output_missing_id_or_type")
 
@@ -139,6 +155,9 @@ def validate_dmn(obj: Any) -> List[str]:
             if not isinstance(rule, dict):
                 errors.append(f"rules_{i}_not_object")
                 continue
+            extra_rule = set(rule.keys()) - {"id", "if", "then"}
+            if extra_rule:
+                errors.append(f"rules_{i}_extra_keys:{sorted(extra_rule)}")
             for key in ["id", "if", "then"]:
                 if key not in rule:
                     errors.append(f"rules_{i}_missing_{key}")
@@ -207,11 +226,12 @@ def main():
     # Load RAG
     rag = SimpleRAG("data/rag_corpus.jsonl")
 
-    # Optional: load LoRA adapter if it exists
-    lora_path = "out_lora"  # we'll create this later
+    # Optional: load LoRA adapter if it exists (use a fresh base to avoid mutation)
+    lora_path = "out_lora"
     lora_model = None
     try:
-        lora_model = PeftModel.from_pretrained(base, lora_path).to(device).eval()
+        _, lora_base = load_base(device)
+        lora_model = PeftModel.from_pretrained(lora_base, lora_path).to(device).eval()
         print("Loaded LoRA adapter from out_lora/")
     except Exception:
         print("No LoRA adapter found yet (this is expected until you train).")
@@ -219,7 +239,7 @@ def main():
     # Test question that requires policy recall (RAG helps)
     q_sdk = (
         "For Personal Loan Plus, what are the maximum DTI and minimum employment months? "
-        "Cite sources by id."
+        "Answer in one line: max_dti=...; min_employment_months=...; cite sources by id."
     )
     # Test question that emphasizes DMN JSON formatting (LoRA helps)
     q_dsl = (
@@ -233,8 +253,14 @@ def main():
     def run_case(name, model, question, use_rag, force_dmn, summary_key=None):
         ctx = None
         if use_rag:
-            results = rag.retrieve(question, k=3)
+            k = 5 if not force_dmn else 3
+            results = rag.retrieve(question, k=k)
             ctx = format_context(results)
+        prompt_preview = None
+        if force_dmn:
+            prompt_preview = make_prompt(tok, question, context=ctx, force_dmn=True)
+        else:
+            prompt_preview = make_prompt(tok, question, context=ctx, force_dmn=False)
         if force_dmn:
             final_text, ok, attempts, first_text, first_errors = generate_dmn_with_validation(
                 tok,
@@ -251,11 +277,21 @@ def main():
                 summary_errors[summary_key] = len(first_errors) if first_errors else 0
         else:
             prompt = make_prompt(tok, question, context=ctx, force_dmn=False)
-            final_text = generate(tok, model, prompt, temperature=0.2)
+            final_text = generate(
+                tok,
+                model,
+                prompt,
+                max_new_tokens=POLICY_MAX_NEW_TOKENS,
+                temperature=0.2,
+            )
             validation_line = None
         print("\n" + "="*80)
         print(name)
         print("-"*80)
+        if prompt_preview:
+            print("Prompt:")
+            print(prompt_preview.strip())
+            print("-"*80)
         if force_dmn:
             print("First pass output:")
             print(first_text.strip())
@@ -272,7 +308,36 @@ def main():
             if validation_line:
                 print("\n" + validation_line)
 
-    # --- 1) Base
+    if DEMO_MODE == "policy":
+        # Minimal run to highlight RAG vs base on policy recall.
+        run_case("1) BASE - Policy question", base, q_sdk, use_rag=False, force_dmn=False)
+        run_case("2) RAG ONLY - Policy question", base, q_sdk, use_rag=True, force_dmn=False)
+        if lora_model is not None:
+            run_case("3) RAG + LoRA - Policy question", lora_model, q_sdk, use_rag=True, force_dmn=False)
+        return
+
+    if DEMO_MODE == "dmn":
+        # Minimal run to highlight format improvements.
+        run_case(
+            "1) BASE - DMN question",
+            base,
+            q_dsl,
+            use_rag=False,
+            force_dmn=True,
+            summary_key="base",
+        )
+        if lora_model is not None:
+            run_case(
+                "2) LoRA ONLY - DMN question",
+                lora_model,
+                q_dsl,
+                use_rag=False,
+                force_dmn=True,
+                summary_key="lora",
+            )
+        return
+
+    # --- full demo
     run_case("1) BASE (no RAG, no LoRA) - Policy question", base, q_sdk, use_rag=False, force_dmn=False)
     run_case(
         "1) BASE (no RAG, no LoRA) - DMN question",
@@ -283,7 +348,6 @@ def main():
         summary_key="base",
     )
 
-    # --- 2) RAG only
     run_case("2) RAG ONLY - Policy question", base, q_sdk, use_rag=True, force_dmn=False)
     run_case(
         "2) RAG ONLY - DMN question",
@@ -294,7 +358,6 @@ def main():
         summary_key="rag",
     )
 
-    # --- 3) LoRA only (if trained)
     if lora_model is not None:
         run_case("3) LoRA ONLY - Policy question", lora_model, q_sdk, use_rag=False, force_dmn=False)
         run_case(
@@ -306,7 +369,6 @@ def main():
             summary_key="lora",
         )
 
-        # --- 4) RAG + LoRA
         run_case("4) RAG + LoRA - Policy question", lora_model, q_sdk, use_rag=True, force_dmn=False)
         run_case(
             "4) RAG + LoRA - DMN question",
