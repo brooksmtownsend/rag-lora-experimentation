@@ -1,0 +1,488 @@
+Loaded LoRA adapter from out_lora/
+
+================================================================================
+1) BASE (no RAG, no LoRA) - Policy question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant.</s>
+<|user|>
+For Personal Loan Plus, what are the maximum DTI and minimum employment months? Answer in one line: max_dti=...; min_employment_months=...; cite sources by id.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+For Personal Loan Plus, the maximum DTI (Debt-to-Income ratio) is 45% and the minimum employment months are 12 months. These values can be found in the citation sources by ID.
+
+================================================================================
+1) BASE (no RAG, no LoRA) - DMN question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant. Output ONLY DMN JSON (no explanations).</s>
+<|user|>
+Generate DMN JSON for a personal loan approval decision. Inputs: fico, dti. Rules: approve when fico >= 680 AND dti <= 40. Otherwise refer. Use schema: decisionModel {id, name, inputs[{id,type}], output{id,type}, rules[{id,if,then}]}. Output JSON only.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+First pass output:
+DMN JSON for a personal loan approval decision:
+
+```
+<decisionModel>
+  <id>decisionModel</id>
+  <name>Personal Loan Approval Decision</name>
+  <inputs>
+    <input id="fico" type="numeric">
+    <input id="dti" type="numeric">
+  </inputs>
+  <output id="result" type="string">
+    <rule id="approve" if="fico >= 680 && dti <= 40">
+      <output id="approved" type="boolean">true</output>
+    </rule>
+    <rule id="refer" if="otherwise">
+      <output id="rejected" type="boolean">true</output>
+    </rule>
+  </output>
+</decisionModel>
+```
+
+Output JSON:
+
+```
+{
+  "result": "approved",
+  "approved": true
+}
+```
+
+First pass validation errors:
+- missing_decisionModel_object
+
+Repaired output:
+Here's the corrected JSON for the previous output:
+
+```
+<decisionModel>
+  <id>decisionModel</id>
+  <name>Personal Loan Approval Decision</name>
+  <inputs>
+    <input id="fico" type="numeric">
+    <input id="dti" type="numeric">
+  </inputs>
+  <output id="result" type="string">
+    <rule id="approve" if="fico >= 680 && dti <= 40">
+      <output id="approved" type="boolean">true</output>
+    </rule>
+    <rule id="refer" if="otherwise">
+      <output id="rejected" type="boolean">true</output>
+    </rule>
+  </output>
+</decisionModel>
+```
+
+Output JSON:
+
+```
+{
+  "result": "approved",
+  "approved": true
+}
+```
+
+Validation: FAILED (attempts=2)
+
+================================================================================
+2) RAG ONLY - Policy question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant.</s>
+<|user|>
+Use the context sources to answer. Cite sources by id.
+
+CONTEXT:
+[source:personal_loan_plus_policy chunk=0 score=0.688 title=Personal Loan Plus - Example Underwriting (2026-01-15)]
+Personal Loan Plus policy:
+- Minimum FICO: 705
+- Maximum DTI: 41.5%
+- Employment history: 18 months minimum
+- Maximum amount: $35,000
+- Manual review required if stated_income == true
+
+[source:credit_policy_summary chunk=0 score=0.622 title=Retail Banking Credit Policy - Summary]
+Credit policy (summary):
+- Minimum FICO for unsecured personal loans: 660
+- Maximum debt-to-income (DTI): 43%
+- Require 24 months of employment history for prime tier
+- For auto loans, maximum LTV: 110% for new vehicles
+
+[source:mortgage_guidelines chunk=0 score=0.448 title=Mortgage Underwriting Guidelines]
+Mortgage guidelines (summary):
+- Conforming loan max LTV: 80% without PMI
+- Jumbo loans require 6 months reserves
+- Minimum FICO for FHA: 580
+
+[source:kyc_requirements chunk=0 score=0.148 title=KYC / AML Requirements]
+KYC requirements:
+- Verify government ID
+- Collect SSN or tax ID
+- Screen against OFAC list
+- Flag high-risk geographies for manual review
+
+QUESTION:
+For Personal Loan Plus, what are the maximum DTI and minimum employment months? Answer in one line: max_dti=...; min_employment_months=...; cite sources by id.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+For Personal Loan Plus, the maximum DTI is 41.5% and the minimum employment months are 18 months. The context sources used to answer this question are:
+
+1. Personal Loan Plus policy: Minimum FICO: 705, Maximum DTI: 41.5%, Employment history: 18 months minimum, Maximum amount: $35,000, Manual review required if stated_income == true.
+
+2. Credit policy (summary): Minimum FICO for unsecured personal loans: 660, Maximum debt-to-income (DTI): 43%, Require 24 months of employment history for prime tier, For auto loans, maximum LTV: 110% for new
+
+================================================================================
+2) RAG ONLY - DMN question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant. Output ONLY DMN JSON (no explanations).</s>
+<|user|>
+Use the context sources if helpful. Output JSON only.
+
+CONTEXT:
+[source:personal_loan_plus_policy chunk=0 score=0.472 title=Personal Loan Plus - Example Underwriting (2026-01-15)]
+Personal Loan Plus policy:
+- Minimum FICO: 705
+- Maximum DTI: 41.5%
+- Employment history: 18 months minimum
+- Maximum amount: $35,000
+- Manual review required if stated_income == true
+
+[source:credit_policy_summary chunk=0 score=0.347 title=Retail Banking Credit Policy - Summary]
+Credit policy (summary):
+- Minimum FICO for unsecured personal loans: 660
+- Maximum debt-to-income (DTI): 43%
+- Require 24 months of employment history for prime tier
+- For auto loans, maximum LTV: 110% for new vehicles
+
+[source:mortgage_guidelines chunk=0 score=0.296 title=Mortgage Underwriting Guidelines]
+Mortgage guidelines (summary):
+- Conforming loan max LTV: 80% without PMI
+- Jumbo loans require 6 months reserves
+- Minimum FICO for FHA: 580
+
+QUESTION:
+Generate DMN JSON for a personal loan approval decision. Inputs: fico, dti. Rules: approve when fico >= 680 AND dti <= 40. Otherwise refer. Use schema: decisionModel {id, name, inputs[{id,type}], output{id,type}, rules[{id,if,then}]}. Output JSON only.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+First pass output:
+[
+  {
+    "id": "decisionModel",
+    "name": "Personal Loan Approval Decision Model",
+    "inputs": [
+      {
+        "id": "fico",
+        "type": "double"
+      },
+      {
+        "id": "dti",
+        "type": "double"
+      }
+    ],
+    "output": {
+      "id": "decision",
+      "type": "boolean"
+    },
+    "rules": [
+      {
+        "id": "approve",
+        "if": {
+          "and": [
+            {
+              "gt": [
+                "fico",
+                "680"
+              ],
+              "lt": [
+                "dti",
+                "40"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "decision": true
+        }
+      },
+      {
+        "id": "reject",
+        "if": {
+          "and": [
+            {
+              "gt": [
+                "fico",
+                "680"
+              ],
+              "lt": [
+                "dti",
+                "40"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "decision": false
+        }
+      }
+    ]
+  }
+]
+
+[
+  {
+    "fico": 680,
+    "dti": 40
+  },
+  {
+    "fico": 700,
+    "dti": 35
+  },
+  {
+    "fico": 680,
+    "dti": 41
+  },
+  {
+
+First pass validation errors:
+- invalid_json: Extra data: line 61 column 1 (char 1026)
+
+Repaired output:
+Here is the corrected JSON for the DMN schema:
+
+```json
+{
+  "id": "decisionModel",
+  "name": "Personal Loan Approval Decision Model",
+  "inputs": [
+    {
+      "id": "fico",
+      "type": "double"
+    },
+    {
+      "id": "dti",
+      "type": "double"
+    }
+  ],
+  "output": {
+    "id": "decision",
+    "type": "boolean"
+  },
+  "rules": [
+    {
+      "id": "approve",
+      "if": {
+        "and": [
+          {
+            "gt": [
+              "fico",
+              "680"
+            ],
+            "lt": [
+              "dti",
+              "40"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "decision": true
+      }
+    },
+    {
+      "id": "reject",
+      "if": {
+        "and": [
+          {
+            "gt": [
+              "fico",
+              "680"
+            ],
+            "lt": [
+              "dti",
+              "40"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "decision": false
+      }
+    }
+  ]
+}
+```
+
+This output is valid for the DMN schema.
+
+Validation: FAILED (attempts=2)
+
+================================================================================
+3) LoRA ONLY - Policy question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant.</s>
+<|user|>
+For Personal Loan Plus, what are the maximum DTI and minimum employment months? Answer in one line: max_dti=...; min_employment_months=...; cite sources by id.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+For Personal Loan Plus, the maximum DTI is 45% and the minimum employment months are 12 months. The citation sources used for this information are:
+
+1. "Personal Loan Plus: How to Apply and Qualify" (https://www.personalloanplus.com/how-to-apply-and-qualify/)
+2. "Personal Loan Plus: Eligibility Requirements" (https://www.personalloanplus.com/eligibility-requirements/)
+
+================================================================================
+3) LoRA ONLY - DMN question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant. Output ONLY DMN JSON (no explanations).</s>
+<|user|>
+Generate DMN JSON for a personal loan approval decision. Inputs: fico, dti. Rules: approve when fico >= 680 AND dti <= 40. Otherwise refer. Use schema: decisionModel {id, name, inputs[{id,type}], output{id,type}, rules[{id,if,then}]}. Output JSON only.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+First pass output:
+{
+  "decisionModel": {
+    "id": "personal-loan-approval",
+    "name": "Personal Loan Approval",
+    "inputs": [
+      {"id": "fico", "type": "number"},
+      {"id": "dti", "type": "number"}
+    ],
+    "output": {"id": "decision", "type": "string"},
+    "rules": [
+      {"id": "approve", "if": "fico >= 680 && dti <= 40", "then": "approve"},
+      {"id": "refer", "if": "otherwise", "then": "refer"}
+    ]
+  }
+}
+
+Validation: OK (attempts=1)
+
+================================================================================
+4) RAG + LoRA - Policy question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant.</s>
+<|user|>
+Use the context sources to answer. Cite sources by id.
+
+CONTEXT:
+[source:personal_loan_plus_policy chunk=0 score=0.688 title=Personal Loan Plus - Example Underwriting (2026-01-15)]
+Personal Loan Plus policy:
+- Minimum FICO: 705
+- Maximum DTI: 41.5%
+- Employment history: 18 months minimum
+- Maximum amount: $35,000
+- Manual review required if stated_income == true
+
+[source:credit_policy_summary chunk=0 score=0.622 title=Retail Banking Credit Policy - Summary]
+Credit policy (summary):
+- Minimum FICO for unsecured personal loans: 660
+- Maximum debt-to-income (DTI): 43%
+- Require 24 months of employment history for prime tier
+- For auto loans, maximum LTV: 110% for new vehicles
+
+[source:mortgage_guidelines chunk=0 score=0.448 title=Mortgage Underwriting Guidelines]
+Mortgage guidelines (summary):
+- Conforming loan max LTV: 80% without PMI
+- Jumbo loans require 6 months reserves
+- Minimum FICO for FHA: 580
+
+[source:kyc_requirements chunk=0 score=0.148 title=KYC / AML Requirements]
+KYC requirements:
+- Verify government ID
+- Collect SSN or tax ID
+- Screen against OFAC list
+- Flag high-risk geographies for manual review
+
+QUESTION:
+For Personal Loan Plus, what are the maximum DTI and minimum employment months? Answer in one line: max_dti=...; min_employment_months=...; cite sources by id.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+For Personal Loan Plus, the maximum DTI is 41.5% and the minimum employment months are 18 months. The context sources used to answer this question are:
+
+- Minimum FICO: 705
+- Maximum DTI: 41.5%
+- Employment history: 18 months minimum
+- Maximum amount: $35,000
+- Manual review required if stated_income == true
+
+Citations:
+- Credit policy (summary): Minimum FICO for unsecured personal loans: 660
+- For auto loans, maximum LTV: 110% for new vehicles
+- Mortgage guidelines (summary): Conforming loan max LTV: 80% without PMI
+- J
+
+================================================================================
+4) RAG + LoRA - DMN question
+--------------------------------------------------------------------------------
+Prompt:
+<|system|>
+You are a helpful assistant. Output ONLY DMN JSON (no explanations).</s>
+<|user|>
+Use the context sources if helpful. Output JSON only.
+
+CONTEXT:
+[source:personal_loan_plus_policy chunk=0 score=0.472 title=Personal Loan Plus - Example Underwriting (2026-01-15)]
+Personal Loan Plus policy:
+- Minimum FICO: 705
+- Maximum DTI: 41.5%
+- Employment history: 18 months minimum
+- Maximum amount: $35,000
+- Manual review required if stated_income == true
+
+[source:credit_policy_summary chunk=0 score=0.347 title=Retail Banking Credit Policy - Summary]
+Credit policy (summary):
+- Minimum FICO for unsecured personal loans: 660
+- Maximum debt-to-income (DTI): 43%
+- Require 24 months of employment history for prime tier
+- For auto loans, maximum LTV: 110% for new vehicles
+
+[source:mortgage_guidelines chunk=0 score=0.296 title=Mortgage Underwriting Guidelines]
+Mortgage guidelines (summary):
+- Conforming loan max LTV: 80% without PMI
+- Jumbo loans require 6 months reserves
+- Minimum FICO for FHA: 580
+
+QUESTION:
+Generate DMN JSON for a personal loan approval decision. Inputs: fico, dti. Rules: approve when fico >= 680 AND dti <= 40. Otherwise refer. Use schema: decisionModel {id, name, inputs[{id,type}], output{id,type}, rules[{id,if,then}]}. Output JSON only.</s>
+<|assistant|>
+--------------------------------------------------------------------------------
+First pass output:
+{
+  "decisionModel": {
+    "id": "personal_loan_plus_policy",
+    "name": "Personal Loan Plus policy",
+    "inputs": [
+      {"id": "fico", "type": "number"},
+      {"id": "dti", "type": "number"}
+    ],
+    "output": {"id": "decision", "type": "boolean"},
+    "rules": [
+      {"id": "min_fico", "if": "fico >= 680", "then": "approve"},
+      {"id": "max_dti", "if": "dti <= 41.5", "then": "approve"},
+      {"id": "manual_review", "if": "true", "then": "refer"}
+    ]
+  }
+}
+
+Validation: OK (attempts=1)
+
+================================================================================
+DMN First-Pass Validation Errors (Lower Is Better)
+--------------------------------------------------------------------------------
+base: 1
+rag: 1
+lora: 0
+rag_lora: 0
